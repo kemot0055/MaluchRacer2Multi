@@ -1,0 +1,31 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 16
+VisualStudioVersion = 16.0.29806.167
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "MaluchRacer2Multi", "MaluchRacer2Multi\MaluchRacer2Multi.vcxproj", "{C5B55700-AAB3-4600-AC93-C923855180AC}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|x64 = Debug|x64
+		Debug|x86 = Debug|x86
+		Release|x64 = Release|x64
+		Release|x86 = Release|x86
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{C5B55700-AAB3-4600-AC93-C923855180AC}.Debug|x64.ActiveCfg = Debug|x64
+		{C5B55700-AAB3-4600-AC93-C923855180AC}.Debug|x64.Build.0 = Debug|x64
+		{C5B55700-AAB3-4600-AC93-C923855180AC}.Debug|x86.ActiveCfg = Debug|Win32
+		{C5B55700-AAB3-4600-AC93-C923855180AC}.Debug|x86.Build.0 = Debug|Win32
+		{C5B55700-AAB3-4600-AC93-C923855180AC}.Release|x64.ActiveCfg = Release|x64
+		{C5B55700-AAB3-4600-AC93-C923855180AC}.Release|x64.Build.0 = Release|x64
+		{C5B55700-AAB3-4600-AC93-C923855180AC}.Release|x86.ActiveCfg = Release|Win32
+		{C5B55700-AAB3-4600-AC93-C923855180AC}.Release|x86.Build.0 = Release|Win32
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {21C9D598-CB94-4A5B-8495-AEA6F1857E46}
+	EndGlobalSection
+EndGlobal
