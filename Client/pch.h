@@ -1,3 +1,5 @@
+#define INI_FILE_NAME "mr2_multi.ini"
+
 #include <Windows.h>
 #include <string>
 
