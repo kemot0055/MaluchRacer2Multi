@@ -1,12 +1,66 @@
 #include "pch.h"
 
-const dword INIT_FUNCTION_HOOK_POS = 0x1000908E;
-const dword INIT_FUNCTION_RETN_POS = 0x10009096;
+const dword INIT_FUNCTION_HOOK_POS  = 0x1000908E;
+const dword INIT_FUNCTION_RETN_POS  = 0x10009096;
 
-dword MR2_DLL_POS = NULL;
+dword       GAME_RACE_LOOP_HOOK_POS = 0x000012E0;
+dword       GAME_RACE_LOOP_RETN_POS = 0x000012E7;
+
+const char* MR2_DLL_NAME            = "mr2.dll";
+dword       MR2_DLL_POS             = NULL;
+
+void handle_race_loop( RaceInfo* race_info ) {
+    race_info->field_00 = 0x1D;
+
+    // if status == 0
+    // this is loading status
+    // if status == 1
+    // send sync status
+    // and wait for others
+    // if status >= 2
+    // set player positions according to server
+}
+
+_declspec( naked ) void hook_race_loop() {
+    _asm push ecx
+    _asm call handle_race_loop
+    _asm add esp, 4
+    _asm push esi
+    _asm mov esi, ecx
+    _asm push edi
+    _asm mov edi, [esi + 0x28]
+    _asm jmp GAME_RACE_LOOP_RETN_POS
+}
+
+void handle_init_function( const char* DLL_NAME, dword DLL_POS ) {
+    if ( strcmp( DLL_NAME, "mr2.dll" ) != 0 ) {
+        return;
+    }
+
+    MR2_DLL_POS = DLL_POS;
+    GAME_RACE_LOOP_HOOK_POS += MR2_DLL_POS;
+    GAME_RACE_LOOP_RETN_POS += MR2_DLL_POS;
+
+    dword old_protect;
+    VirtualProtect( ( void* )MR2_DLL_POS, 0x3000, PAGE_EXECUTE_READWRITE, &old_protect );
+
+    dword pos = ( dword )&hook_race_loop;
+    pos = pos - ( ( dword )GAME_RACE_LOOP_HOOK_POS + 5 );
+
+    *( byte* )( GAME_RACE_LOOP_HOOK_POS ) = 0xE9;
+    *( dword* )( GAME_RACE_LOOP_HOOK_POS + 1 ) = pos;
+
+    VirtualProtect( ( void* )MR2_DLL_POS, 0x3000, old_protect, &old_protect );
+}
 
 __declspec( naked ) void hook_init_function() {
-    _asm mov [ MR2_DLL_POS ], eax
+    _asm push edx
+    _asm push eax
+    _asm push esi
+    _asm call handle_init_function
+    _asm pop esi
+    _asm pop eax
+    _asm pop edx
     _asm cmp eax, ebx
     _asm mov [esp + 0x50], eax
     _asm jmp INIT_FUNCTION_RETN_POS
@@ -14,105 +68,108 @@ __declspec( naked ) void hook_init_function() {
 
 #define INI_FILE_NAME "mr2_multi.ini"
 
-int         port = -1;
-char        name[ 32 ];
-char        address[ 32 ];
-std::string dir;
+dword       port;
+dword       player_id;
+std::string config_dir;
+SOCKET      conn_socket;
+char        player_name[ 32 ];
+char        server_address[ 32 ];
 
-#pragma comment(lib, "Ws2_32.lib")
-void testuj() {
+dword validate() {
     int   size    = GetCurrentDirectoryA( NULL, NULL );
     char* ini_dir = new char[ size ];
 
     GetCurrentDirectoryA( size, ini_dir );
 
-    dir += ini_dir;
+    config_dir += ini_dir;
     
-    if ( dir.back() != '\\' ) {
-        dir += '\\';
+    if ( config_dir.back() != '\\' ) {
+        config_dir += '\\';
     }
 
-    dir += INI_FILE_NAME;
+    config_dir += INI_FILE_NAME;
 
     delete[] ini_dir;
     
-    ini_dir = ( char* )dir.c_str();
+    ini_dir = ( char* )config_dir.c_str();
 
     port = GetPrivateProfileIntA( "Config", "Port", -1, ini_dir );
-    GetPrivateProfileStringA( "Config", "Name", "Player", name, 32, ini_dir );
-    GetPrivateProfileStringA( "Config", "Address", "127.0.0.1", address, 32, ini_dir );
+    GetPrivateProfileStringA( "Config", "Name", "Player", player_name, 32, ini_dir );
+    GetPrivateProfileStringA( "Config", "Address", "127.0.0.1", server_address, 32, ini_dir );
 
     if ( port == -1 ) {
         MessageBoxA( NULL, "Please provide port", "Result", MB_OK );
+        return FALSE;
     } else if ( port > 65535 ) {
         MessageBoxA( NULL, "Port cannot exceed 65535", "Result", MB_OK );
+        return FALSE;
     } else if ( port < 0 ) {
         MessageBoxA( NULL, "Port cannot be negative", "Result", MB_OK );
+        return FALSE;
     }
-
-    MessageBoxA( NULL, name, "Result", MB_OK );
-    MessageBoxA( NULL, address, "Result", MB_OK );
 
     WSAData data;
     int result = WSAStartup( MAKEWORD( 2, 2 ), &data );
 
     if ( result != 0 ) {
         MessageBoxA( NULL, "Error=0", NULL, MB_OK );
-        return;
+        return FALSE;
     }
 
-    SOCKET s = socket( AF_INET, SOCK_STREAM, IPPROTO_TCP );
+    conn_socket = socket( AF_INET, SOCK_STREAM, IPPROTO_TCP );
 
-    if ( s == INVALID_SOCKET ) {
+    if ( conn_socket == INVALID_SOCKET ) {
         MessageBoxA( NULL, "Error=1", NULL, MB_OK );
         WSACleanup();
-        return;
+        return FALSE;
     }
 
-    sockaddr_in sa;
-    sa.sin_family      = AF_INET;
-    sa.sin_addr.s_addr = inet_addr( address );
-    sa.sin_port        = htons( port );
+    sockaddr_in socket_address;
+    socket_address.sin_addr.s_addr = inet_addr( server_address );
+    socket_address.sin_port        = htons( port );
+    socket_address.sin_family      = AF_INET;
 
-    result = connect( s, ( SOCKADDR* ) &sa, sizeof( sa ) );
+    result = connect( conn_socket, ( SOCKADDR* ) &socket_address, sizeof( socket_address ) );
 
     if ( result == SOCKET_ERROR ) {
-        closesocket( s );
-        WSACleanup();
-
         MessageBoxA( NULL, "Error=2", NULL, MB_OK );
-        return;
+
+        closesocket( conn_socket );
+        WSACleanup();
+        return FALSE;
     }
 
-    //const char testowe[] = { 0x21, 0x37, 0x21, 0x37 };
+    dword name_length = strlen( player_name );
+    char buffer[ 128 ];
 
-    //result = send( s, testowe, 5, MSG_OOB );
+    buffer[ 0 ] = 0x01;
+    buffer[ 1 ] = name_length;
+    memcpy( &buffer[ 2 ], player_name, name_length );
 
-    /*if ( result == SOCKET_ERROR ) {
-        MessageBoxA( NULL, "Chujnia panie", "4", MB_OK );
+    result = send( conn_socket, buffer, name_length + 3, MSG_OOB );
 
-        result = closesocket( s );
+    if ( result == SOCKET_ERROR ) {
+        MessageBoxA( NULL, "Error=3", NULL, MB_OK );
 
-        if ( result == SOCKET_ERROR ) {
-            MessageBoxA( NULL, "Chujnia panie", "5", MB_OK );
+        closesocket( conn_socket );
+        WSACleanup();
+        return FALSE;
+    }
+
+    char recvbuf[ 16 ];
+
+    do {
+        result = recv( conn_socket, recvbuf, 16, MSG_PEEK );
+
+        if ( result < 1 || recvbuf[ 0 ] != 0x01 ) {
+            return FALSE;
         }
 
-        WSACleanup();
-        return;
-    }*/
+        player_id = recvbuf[ 1 ];
+        break;
+    } while ( result > 0 );
 
-    //char recvbuf[ 16 ];
-
-    //do {
-    //    result = recv( s, recvbuf, 16, 0 );
-
-    //    if ( result > 0 && strcmp( "gib_data_plz", recvbuf ) == 0 ) {
-    //        MessageBoxA( NULL, recvbuf, "6", MB_OK );
-    //    }
-    //} while ( result > 0 );
-
-    closesocket( s );
-    WSACleanup();
+    return TRUE;
 }
 
 dword __stdcall DllMain( dword handle, dword reason, void* reserved ) {
@@ -122,9 +179,11 @@ dword __stdcall DllMain( dword handle, dword reason, void* reserved ) {
 
     MessageBoxA( NULL, "Hello", "Hello World", MB_OK );
 
-    testuj();
+    if ( validate() == FALSE ) {
+        return FALSE;
+    }
 
-    dword old_protect = NULL;
+    dword old_protect;
 
     VirtualProtect( ( void* )0x10000000, 0x10000, PAGE_EXECUTE_READWRITE, &old_protect );
 

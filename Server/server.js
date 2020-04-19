@@ -1,44 +1,35 @@
-const net = require( 'net' );
+const Player = require( './player' );
+const net    = require( 'net' );
 
-const players = [];
+class Server {
 
-class Player {
+    server     = null;
+    players    = {};
+    players_nb = 0;
 
-    socket = null;
-    name   = '';
+    initialize() {
+        this.server = net.createServer( ( socket ) => {
+            if ( this.players_nb >= 4 ) {
+                return console.log( 'Cannot exceed four players :-(' ), socket.end(); // TODO: Return message to client
+            }
 
-    constructor( socket ) {
-        this.socket = socket;
+            let player_id = 0;
 
-        socket.on( 'data', ( data ) => {
-            console.log( data );
+            while ( player_id in this.players === true ) {
+                player_id = ( player_id + 1 ) % 255;
+            }
+
+            this.players[ player_id ] = new Player( player_id, socket, this );
+            this.players_nb++;
+
+            socket.write( Buffer.from( [ 0x01, player_id ] ) );
         } );
 
-        socket.on( 'error', ( error ) => {
-            console.log( error );
+        this.server.listen( 2137, 'localhost', () => {
+            console.log( 'server started' );
         } );
-
-        socket.write( 'gib_data_plz\0' );
-    }
-
-    update() {
-
     }
 
 }
 
-const server = net.createServer( function( socket ) {
-    if ( players.length > 4 ) {
-        return console.log( 'Cannot exceed four players :-(' ), socket.end();
-    }
-
-    players.push( new Player( socket ) );
-} );
-
-server.listen( 2137, 'localhost', () => {
-    console.log( 'server started' );
-
-    //setInterval( () => {
-        
-    //}, 5000 );
-} );
+new Server().initialize();
