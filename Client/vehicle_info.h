@@ -4,9 +4,29 @@ class VehicleInfo_ {
 
     public :
 
-        dword hgw[ 128 ];
+        dword fields_0[ 52 ];
+        dword collidable;
+        dword fields_1[ 75 ];
         dword field200;
-        dword hgw2[ 52 ];
+        dword fields_2[ 40 ];
+
+        float tyre_rot_x;
+        float tyre_rot_y;
+        float tyre_rot_z;
+
+        float field2B0;
+        float field2B4;
+        float field2B8;
+        float field2BC;
+
+        float field2C0;
+
+        float rot_x;
+        float rot_y;
+        float rot_z;
+
+        float field2D0;
+
         float x;
         float y;
         float z;

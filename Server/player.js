@@ -1,68 +1,83 @@
+const PLAYER_INITIALIZED  = 0x00000001;
+const PLAYER_SYNCHRONIZED = 0x00000002;
+const PLAYER_PLAYING      = 0x00000004;
+
 class Player {
 
-    socket = null;
-    server = null;
+    constructor( id = -1, socket = null, server = null ) {
+        this.server       = server;
+        this.socket       = socket;
+        this.id           = id;
 
-    initialized  = false;
-    id           = -1;
-    name         = 'Player';
-    synchronized = false;
+        this.name         = 'Player';
+        this.packets      = 0;
 
-    x = 0;
-    y = 0;
-    z = 0;
+        this.synchronized = false;
+        this.initialized  = false;
 
-    xd = 0;
+        this.x            = 0;
+        this.y            = 0;
+        this.z            = 0;
 
-    constructor( id, socket, server ) {
-        this.server = server;
-        this.socket = socket;
-        this.id     = id;
+        this.rx           = 0;
+        this.ry           = 0;
+        this.rz           = 0;
 
-        socket.on( 'data', ( data ) => {
-            this.xd++;
+        this.process      = this.process.bind( this );
+    }
 
-            if ( data.length <= 0 ) {
-                return;
-            }
+    process( data ) {
+        const message_id = data.readUInt8();
 
-            const message_id = data.readUInt8( 0 );
+        if ( message_id === 0x02 ) {
+            this.synchronized = true, this.server.player_synchronize();
+        } else if ( message_id === 0x03 ) {
+            this.x = data.readFloatLE( 1 + 0 );
+            this.y = data.readFloatLE( 1 + 4 );
+            this.z = data.readFloatLE( 1 + 8 );
 
-            if ( message_id === 0x01 ) {
-                return this.initialize( data.slice( 1 ) );
-            } else if ( message_id === 0x02 ) {
-                this.synchronized = true;
-                this.server.player_sync_event( this );
-            } else if ( message_id === 0x03 ) {
-                this.x = data.readFloatLE( 1 );
-                this.y = data.readFloatLE( 5 );
-                this.z = data.readFloatLE( 9 );
+            this.rx = data.readFloatLE( 1 + 12 );
+            this.ry = data.readFloatLE( 1 + 16 );
+            this.rz = data.readFloatLE( 1 + 20 );
 
-                console.log( `Player "${ this.name }" position: {x = ${ this.x }, y = ${ this.y }, z = ${ this.z }}  ${ this.xd }` );
-            }
+            console.log( `${ this.name }: x = ${ this.x }, y = ${ this.y }, z = ${ this.z }, delta = ${ Date.now() - this.last_packet }` );
+        }
 
-            this.socket.write( Buffer.from( [ 0x00 ] ) );
-        } );
-
-        socket.on( 'close', ( had_error ) => {
-            console.log( `Player "${ this.name }" disconnected ${ had_error ? '(error)' : '' }` );
-
-            delete this.server.players[ this.id ];
-            this.server.players_nb--;
-        } );
-
-        socket.on( 'error', ( error ) => {
-            console.log( `Player ${ this.name } disconnected (error)`, error );
-        } );
+        this.packets++;
+        this.last_packet = Date.now();
     }
 
     initialize( data ) {
-        if ( this.initialized ) {
-            return;
+        if ( this.initialized === true ) {
+            return false;
         }
 
-        this.name = data.toString( 'utf-8', 1, data.readUInt8() + 1 );
+        this.socket.setTimeout( 0 );
+
+        for ( const id of [ 'data', 'error' ] ) {
+            this.socket.removeAllListeners( id );
+        }
+
+        this.socket.on( 'error', ( error ) => {
+            console.log( `Player ${ this.name } disconnected (${ error.code })` );
+        } );
+
+        this.socket.on( 'close', ( had_error ) => {
+            this.server.player_leaved( this.id );
+
+            if ( had_error === true ) {
+                return;
+            }
+
+            console.log( `Player ${ this.name } disconnected` );
+        } );
+
+        this.socket.on( 'data', this.process );
+
+        this.name        = data.toString( 'utf-8', 1, 1 + data.readUInt8() );
         this.initialized = true;
+
+        return this.socket.write( Buffer.from( [ 0x01, this.id ] ) ), console.log( `Player ${ this.name } connected` ), true;
     }
 
 }

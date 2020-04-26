@@ -1,12 +1,16 @@
 #include "pch.h"
 
-const dword   INIT_FUNCTION_HOOK_POS  = 0x1000908E;
-const dword   INIT_FUNCTION_RETN_POS  = 0x10009096;
+const dword   INIT_FUNCTION_HOOK_POS   = 0x1000908E;
+const dword   INIT_FUNCTION_RETN_POS   = 0x10009096;
 
-const dword   GAME_AI_DISABLE         = 0x00004562;
-const dword   GAME_VEHICLES_ARRAY     = 0x0016C1B4;
-dword         GAME_RACE_LOOP_HOOK_POS = 0x000012E0;
-dword         GAME_RACE_LOOP_RETN_POS = 0x000012E7;
+const dword   GAME_AI_DISABLE          = 0x00004562;
+const dword   GAME_VEHICLES_ARRAY      = 0x0016C1B4;
+dword         GAME_RACE_LOOP_HOOK_POS  = 0x000012E0;
+dword         GAME_RACE_LOOP_RETN_POS  = 0x000012E7;
+dword         GAME_RACE_START_HOOK_POS = 0x0000131C;
+dword         GAME_RACE_START_RETN_POS = 0x00001326;
+dword         GAME_VEHICLE_PATCH_0     = 0x00025F14;
+dword         GAME_VEHICLE_PATCH_1     = 0x000267F9;
 
 const char*   MR2_DLL_NAME            = "mr2.dll";
 dword         MR2_DLL_POS             = NULL;
@@ -21,6 +25,58 @@ char        player_name[ 32 ];
 char        server_address[ 32 ];
 
 dword disconnected = FALSE;
+int _result = 0;
+int _error  = 0;
+
+// send sync status, and wait for others
+void handle_race_synchronization() {
+    dword sync_status = 0x00000002;
+
+    int result = send( conn_socket, ( const char* )&sync_status, 2, NULL );
+
+    if ( result != 2 ) {
+        MessageBoxA( NULL, "result != 2", NULL, MB_OK );
+    }
+
+    while( true ) {
+        _result = recv( conn_socket, ( char* )&sync_status, 4, NULL );
+
+        if ( _result == 1 ) {
+            break;
+        } else if ( _result == 0 ) {
+            MessageBoxA( NULL, "no cusz, rozlaczyl sie", NULL, MB_OK );
+            disconnected = TRUE;
+            return;
+        } else if ( _result < 0 ) {
+            _error = WSAGetLastError();
+
+            if ( _error == WSAEWOULDBLOCK ) {
+                continue;
+            }
+
+            MessageBoxA( NULL, "no cusz, rozlaczyl sie", NULL, MB_OK );
+            disconnected = TRUE;
+            return;
+        }
+    }
+
+    for ( int i = 1; i < 4; i++ ) {
+        vehicles[ i ]->info->collidable = FALSE;
+        //vehicles[ i ]->info->field200 = 1;
+        vehicles[ i ]->acceleration_strength = 0;
+        vehicles[ i ]->handling_strength = 0;
+        vehicles[ i ]->steering_strength = 0;
+    }
+
+    synchronized = TRUE;
+}
+
+_declspec( naked ) void hook_race_synchronization() {
+    _asm call handle_race_synchronization
+    _asm lea ecx, [esi + 0x30]
+    _asm mov [esi + 0x28], 0x00000001
+    _asm jmp GAME_RACE_START_RETN_POS
+}
 
 void handle_race_loop( RaceInfo* race_info ) {
     if ( disconnected == TRUE ) {
@@ -29,103 +85,71 @@ void handle_race_loop( RaceInfo* race_info ) {
 
     if ( race_info->status == 0 ) {
         synchronized = FALSE;
-    } else if ( race_info->status == 1 && synchronized == FALSE ) {
-        // send sync status, and wait for others
-        dword sync_status = 0x00000002;
+    } else if ( synchronized == FALSE ) {
+        return;
+    } else if ( race_info->status < 6 ) {
+        byte buffer[ 32 ];
 
-        int result = send( conn_socket, ( const char* )&sync_status, 2, MSG_OOB );
-
-        if ( result != 2 ) {
-            MessageBoxA( NULL, "result != 2", NULL, MB_OK );
-        }
-
-        do {
-            result = recv( conn_socket, ( char* )&sync_status, 4, NULL );
-
-            if ( result == 3 ) {
-                break;
-            } else if ( result == 0 ) {
-                break;
-            } else if ( result < 0 ) {
-                int error = WSAGetLastError();
-
-                if ( error == 10035 ) {
-                    continue;
-                }
-
-                char buf[16]; _itoa_s( error, buf, 10 );
-                MessageBoxA( NULL, "no cusz, rozlaczyl sie", buf, MB_OK );
-                disconnected = TRUE;
-                return;
-            }
-        } while( result >= 0 );
-
-        
-        //
-        //char buf[ 128 ];
-
-        //if ( result == 0 ) {
-        //    return;
-        ////} else if ( result < 0 ) {
-        //    MessageBoxA( NULL, "recv zjebal", NULL, MB_OK );
-        //}
-
-        synchronized = TRUE;
-
-        for ( int i = 1; i < 4; i++ ) {
-            vehicles[ i ]->acceleration_strength = 0;
-            vehicles[ i ]->handling_strength = 0;
-            vehicles[ i ]->steering_strength = 0;
-        }
-    } else if ( race_info->status >= 2 && synchronized == TRUE ) {
-        byte  buffer[ 128 ];
-        int   result;
-        dword xd;
-
-        if ( race_info->status_time % 50 == 0 ) {
+        if ( race_info->status_time % 25 == 0 ) {
             buffer[ 0 ] = 0x03;
-            memcpy( &buffer[ 1 ], &vehicles[ 0 ]->info->x, 4 );
-            memcpy( &buffer[ 5 ], &vehicles[ 0 ]->info->y, 4 );
-            memcpy( &buffer[ 9 ], &vehicles[ 0 ]->info->z, 4 );
 
-            result = send( conn_socket, ( const char* )buffer, 14, NULL );
+            memcpy( &buffer[ 1 + 0 ], &vehicles[ 0 ]->info->x, 4 );
+            memcpy( &buffer[ 1 + 4 ], &vehicles[ 0 ]->info->y, 4 );
+            memcpy( &buffer[ 1 + 8 ], &vehicles[ 0 ]->info->z, 4 );
 
-            if ( result != 14 ) {
-                MessageBoxA( NULL, "send zjebal", NULL, MB_OK );
-            }
+            memcpy( &buffer[ 1 + 12 ], &vehicles[ 0 ]->info->rot_x, 4 );
+            memcpy( &buffer[ 1 + 16 ], &vehicles[ 0 ]->info->rot_y, 4 );
+            memcpy( &buffer[ 1 + 20 ], &vehicles[ 0 ]->info->rot_z, 4 );
+
+            send( conn_socket, ( const char* )buffer, 26, NULL );
         }
 
-        result = recv( conn_socket, ( char* )buffer, 128, NULL );
+        _result = recv( conn_socket, ( char* )buffer, 32, NULL );
 
-        if ( result == 0 ) {
-            return;
-        } else if ( result < 0 ) {
-            int error = WSAGetLastError();
-
-            if ( error == 10035 ) {
-                return;
-            }
-
-            char buf[16]; _itoa_s( error, buf, 10 );
-            MessageBoxA( NULL, "no cusz, rozlaczyl sie", buf, MB_OK );
+        if ( _result == 0 ) {
+            MessageBoxA( NULL, "no cusz, rozlaczyl sie", NULL, MB_OK );
             disconnected = TRUE;
 
             closesocket( conn_socket );
             WSACleanup();
             return;
-        } else if ( result > 0 && buffer[ 0 ] == 0x37 ) {
+        } else if ( _result < 0 ) {
+            _error = WSAGetLastError();
+
+            if ( _error == 10035 ) {
+                return;
+            }
+
+            MessageBoxA( NULL, "no cusz, rozlaczyl sie", NULL, MB_OK );
+            disconnected = TRUE;
+
+            closesocket( conn_socket );
+            WSACleanup();
+            return;
+        } else if ( _result > 0 && buffer[ 0 ] == 0x37 ) {
             dword players = buffer[ 1 ];
 
             for ( int i = 0; i < players; i++ ) {
                 vehicles[ 1 + i ]->acceleration_strength = 0;
                 vehicles[ 1 + i ]->handling_strength = 0;
                 vehicles[ 1 + i ]->steering_strength = 0;
+                vehicles[ 1 + i ]->info->field200 = 1;
 
-                memcpy( &vehicles[ 1 + i ]->info->x, &buffer[ ( i * 12 ) + 2 ], 4 );
-                memcpy( &vehicles[ 1 + i ]->info->y, &buffer[ ( i * 12 ) + 2 + 4 ], 4 );
-                memcpy( &vehicles[ 1 + i ]->info->z, &buffer[ ( i * 12 ) + 2 + 4 + 4 ], 4 );
+                // [m][p][xxxx][yyyy][zzzz][rxrx][ryry][rzrz]
+                // 2 + 24
+
+                memcpy( &vehicles[ 1 + i ]->info->x, &buffer[ 2 + ( 24 * i ) + 0 ], 4 );
+                memcpy( &vehicles[ 1 + i ]->info->y, &buffer[ 2 + ( 24 * i ) + 4 ], 4 );
+                memcpy( &vehicles[ 1 + i ]->info->z, &buffer[ 2 + ( 24 * i ) + 8 ], 4 );
+
+                memcpy( &vehicles[ 1 + i ]->info->rot_x, &buffer[ 2 + ( 24 * i ) + 12 ], 4 );
+                memcpy( &vehicles[ 1 + i ]->info->rot_y, &buffer[ 2 + ( 24 * i ) + 16 ], 4 );
+                memcpy( &vehicles[ 1 + i ]->info->rot_z, &buffer[ 2 + ( 24 * i ) + 20 ], 4 );
             }
         }
+    } else {
+        // disconnection from track
+        synchronized = FALSE;
     }
 }
 
@@ -146,11 +170,15 @@ void handle_init_function( const char* DLL_NAME, dword DLL_POS ) {
     }
 
     MR2_DLL_POS = DLL_POS;
-    GAME_RACE_LOOP_HOOK_POS += MR2_DLL_POS;
-    GAME_RACE_LOOP_RETN_POS += MR2_DLL_POS;
+    GAME_RACE_LOOP_HOOK_POS  += MR2_DLL_POS;
+    GAME_RACE_LOOP_RETN_POS  += MR2_DLL_POS;
+    GAME_RACE_START_HOOK_POS += MR2_DLL_POS;
+    GAME_RACE_START_RETN_POS += MR2_DLL_POS;
+    GAME_VEHICLE_PATCH_0     += MR2_DLL_POS;
+    GAME_VEHICLE_PATCH_1     += MR2_DLL_POS;
 
     dword old_protect;
-    VirtualProtect( ( void* )MR2_DLL_POS, 0x6000, PAGE_EXECUTE_READWRITE, &old_protect );
+    VirtualProtect( ( void* )MR2_DLL_POS, 0x2F000, PAGE_EXECUTE_READWRITE, &old_protect );
 
     dword pos = ( dword )&hook_race_loop;
     pos = pos - ( ( dword )GAME_RACE_LOOP_HOOK_POS + 5 );
@@ -158,11 +186,20 @@ void handle_init_function( const char* DLL_NAME, dword DLL_POS ) {
     *( byte* )( GAME_RACE_LOOP_HOOK_POS ) = 0xE9;
     *( dword* )( GAME_RACE_LOOP_HOOK_POS + 1 ) = pos;
 
+    pos = ( dword )&hook_race_synchronization;
+    pos = pos - ( ( dword )GAME_RACE_START_HOOK_POS + 5 );
+
+    *( byte* )( GAME_RACE_START_HOOK_POS ) = 0xE9;
+    *( dword* )( GAME_RACE_START_HOOK_POS + 1 ) = pos;
+
     vehicles = ( VehicleInfo** )( MR2_DLL_POS + GAME_VEHICLES_ARRAY );
 
     *( byte* )( MR2_DLL_POS + GAME_AI_DISABLE ) = 0x7F;
 
-    VirtualProtect( ( void* )MR2_DLL_POS, 0x6000, old_protect, &old_protect );
+    memset( ( void* )GAME_VEHICLE_PATCH_0, 0x90, 6 );
+    memset( ( void* )GAME_VEHICLE_PATCH_1, 0x90, 6 );
+
+    VirtualProtect( ( void* )MR2_DLL_POS, 0x2F000, old_protect, &old_protect );
 }
 
 __declspec( naked ) void hook_init_function() {
@@ -233,7 +270,7 @@ dword validate() {
     socket_address.sin_port        = htons( port );
     socket_address.sin_family      = AF_INET;
 
-    result = connect( conn_socket, ( SOCKADDR* ) &socket_address, sizeof( socket_address ) );
+    result = connect( conn_socket, ( SOCKADDR* )&socket_address, sizeof( socket_address ) );
 
     if ( result == SOCKET_ERROR ) {
         char xd[ 12 ]; _itoa_s( WSAGetLastError(), xd, 10 );

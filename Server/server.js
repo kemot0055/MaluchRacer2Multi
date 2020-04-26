@@ -3,9 +3,13 @@ const net    = require( 'net' );
 
 class Server {
 
-    server     = null;
-    players    = {};
-    players_nb = 0;
+    constructor() {
+        this.players_nb = 0;
+        this.players    = {};
+        this.server     = null;
+
+        //this.player_sync_event = this.player_sync_event.bind( this );
+    }
 
     initialize() {
         this.server = net.createServer( ( socket ) => {
@@ -13,41 +17,59 @@ class Server {
                 return console.log( 'Cannot exceed four players :-(' ), socket.end(); // TODO: Return message to client
             }
 
-            let player_id = 0;
+            socket.setTimeout( 10000, socket.end );
 
-            while ( player_id in this.players === true ) {
-                player_id = ( player_id + 1 ) % 255;
-            }
+            socket.on( 'error', ( error ) => {
+                //idk how to handle
+            } );
 
-            this.players[ player_id ] = new Player( player_id, socket, this );
-            this.players_nb++;
+            socket.on( 'data', ( data ) => {
+                if ( data.readUInt8() !== 0x01 ) {
+                    return socket.end( Buffer.from( [ 0x7F, 0x00 ] ) );
+                }
 
-            socket.write( Buffer.from( [ 0x01, player_id ] ) );
+                this.players_nb++;
+                let player_id = 0;
+
+                while ( player_id in this.players === true ) {
+                    player_id = ( player_id + 1 ) % 256;
+                }
+
+                ( this.players[ player_id ] = new Player( player_id, socket, this ) ).initialize( data.slice( 1 ) );
+            } );
         } );
 
-        this.server.listen( 2137, 'localhost', () => {
+        this.server.listen( 2137, () => {
             console.log( 'server started' );
         } );
     }
 
-    player_sync_event( player ) {
+    player_leaved( player_id ) {
+        delete this.players[ player_id ], this.players_nb--;
+    }
+
+    player_synchronize() {
         for ( let player in this.players ) {
             if ( this.players[ player ].synchronized === false ) {
                 return;
             }
         }
 
-        let buffer = Buffer.from( [ 0x01, 0xDE, 0xCA, 0xFA ] );
+        console.log( 'starting' );
 
         for ( let player in this.players ) {
-            this.players[ player ].socket.write( buffer ); // not works for some reason...
+            this.players[ player ].socket.write( Buffer.from( [ 0x01 ] ) );
         }
 
         setInterval( () => {
             for ( let player in this.players ) {
                 player = this.players[ player ];
 
-                const buffer = Buffer.alloc( 64 );
+                if ( player.synchronized === false ) {
+                    continue;
+                }
+
+                const buffer = Buffer.alloc( 128 );
                 buffer.writeUInt8( 0x37, 0 );
                 let plr = 0;
 
@@ -62,25 +84,27 @@ class Server {
                         continue;
                     }
 
-                    let offset = plr * 12;
+                    let offset = plr * 24;
 
-                    buffer.writeFloatLE( _player.x, offset + 2 );
-                    buffer.writeFloatLE( _player.y, offset + 2 + 4 );
-                    buffer.writeFloatLE( _player.z, offset + 2 + 4 + 4 );
+                    buffer.writeFloatLE( _player.x, 2 + offset + 0 );
+                    buffer.writeFloatLE( _player.y, 2 + offset + 4 );
+                    buffer.writeFloatLE( _player.z, 2 + offset + 8 );
+
+                    buffer.writeFloatLE( _player.rx, 2 + offset + 12 );
+                    buffer.writeFloatLE( _player.ry, 2 + offset + 16 );
+                    buffer.writeFloatLE( _player.rz, 2 + offset + 20 );
 
                     plr++;
                 }
 
-                if ( plr <= 0 ) {
+                if ( plr < 1 ) {
                     continue;
                 }
 
-                buffer.writeUInt8( plr, 1 );
-                //console.log( buffer );
-
+                buffer.writeUInt8( plr, 1 );                
                 player.socket.write( buffer );
             }
-        }, 1000 / 10 );
+         }, 1000 / 20 );
     }
 
 }
