@@ -48,6 +48,47 @@ class Server {
         delete this.players[ player_id ], this.players_nb--;
     }
 
+    player_update( player ) {
+        for ( let player_id in this.players ) {
+            const _player = this.players[ player_id ];
+
+            if ( _player === player || _player.synchronized === false ) {
+                continue;
+            }
+
+            const buffer = Buffer.alloc( 128 );
+            buffer.writeUInt8( 0x37, 0 );
+            let plr = 0;
+
+            for ( let _player_id in this.players ) {
+                const __player = this.players[ _player_id ];
+
+                if ( __player === _player || __player.synchronized === false ) {
+                    continue;
+                }
+
+                let offset = plr * 24;
+
+                buffer.writeFloatLE( __player.x, 2 + offset + 0 );
+                buffer.writeFloatLE( __player.y, 2 + offset + 4 );
+                buffer.writeFloatLE( __player.z, 2 + offset + 8 );
+
+                buffer.writeFloatLE( __player.rx, 2 + offset + 12 );
+                buffer.writeFloatLE( __player.ry, 2 + offset + 16 );
+                buffer.writeFloatLE( __player.rz, 2 + offset + 20 );
+
+                plr++;
+            }
+
+            if ( plr < 1 ) {
+                continue;
+            }
+
+            buffer.writeUInt8( plr, 1 );                
+            _player.socket.write( buffer );
+        }
+    }
+
     player_synchronize() {
         for ( let player in this.players ) {
             if ( this.players[ player ].synchronized === false ) {
@@ -60,51 +101,6 @@ class Server {
         for ( let player in this.players ) {
             this.players[ player ].socket.write( Buffer.from( [ 0x01 ] ) );
         }
-
-        setInterval( () => {
-            for ( let player in this.players ) {
-                player = this.players[ player ];
-
-                if ( player.synchronized === false ) {
-                    continue;
-                }
-
-                const buffer = Buffer.alloc( 128 );
-                buffer.writeUInt8( 0x37, 0 );
-                let plr = 0;
-
-                for ( let _player in this.players ) {
-                    _player = this.players[ _player ];
-
-                    if ( player === _player ) {
-                        continue;
-                    }
-
-                    if ( _player.synchronized === false ) {
-                        continue;
-                    }
-
-                    let offset = plr * 24;
-
-                    buffer.writeFloatLE( _player.x, 2 + offset + 0 );
-                    buffer.writeFloatLE( _player.y, 2 + offset + 4 );
-                    buffer.writeFloatLE( _player.z, 2 + offset + 8 );
-
-                    buffer.writeFloatLE( _player.rx, 2 + offset + 12 );
-                    buffer.writeFloatLE( _player.ry, 2 + offset + 16 );
-                    buffer.writeFloatLE( _player.rz, 2 + offset + 20 );
-
-                    plr++;
-                }
-
-                if ( plr < 1 ) {
-                    continue;
-                }
-
-                buffer.writeUInt8( plr, 1 );                
-                player.socket.write( buffer );
-            }
-         }, 1000 / 20 );
     }
 
 }

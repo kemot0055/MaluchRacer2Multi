@@ -36,7 +36,11 @@ class Player {
             this.ry = data.readFloatLE( 1 + 16 );
             this.rz = data.readFloatLE( 1 + 20 );
 
+            this.server.player_update( this );
+
             console.log( `${ this.name }: x = ${ this.x }, y = ${ this.y }, z = ${ this.z }, delta = ${ Date.now() - this.last_packet }` );
+        } else if ( message_id === 0x04 ) {
+            this.synchronized = false;
         }
 
         this.packets++;

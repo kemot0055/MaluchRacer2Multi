@@ -29,7 +29,7 @@ int _result = 0;
 int _error  = 0;
 
 // send sync status, and wait for others
-void handle_race_synchronization() {
+void handle_race_synchronization( RaceInfo* race_info ) {
     dword sync_status = 0x00000002;
 
     int result = send( conn_socket, ( const char* )&sync_status, 2, NULL );
@@ -61,18 +61,21 @@ void handle_race_synchronization() {
     }
 
     for ( int i = 1; i < 4; i++ ) {
-        vehicles[ i ]->info->collidable = FALSE;
-        //vehicles[ i ]->info->field200 = 1;
         vehicles[ i ]->acceleration_strength = 0;
         vehicles[ i ]->handling_strength = 0;
         vehicles[ i ]->steering_strength = 0;
+
+        vehicles[ i ]->info->collidable = FALSE;
     }
 
+    race_info->laps_nb = 2137;
     synchronized = TRUE;
 }
 
 _declspec( naked ) void hook_race_synchronization() {
+    _asm push esi
     _asm call handle_race_synchronization
+    _asm pop esi
     _asm lea ecx, [esi + 0x30]
     _asm mov [esi + 0x28], 0x00000001
     _asm jmp GAME_RACE_START_RETN_POS
@@ -88,9 +91,9 @@ void handle_race_loop( RaceInfo* race_info ) {
     } else if ( synchronized == FALSE ) {
         return;
     } else if ( race_info->status < 6 ) {
-        byte buffer[ 32 ];
+        byte buffer[ 128 ];
 
-        if ( race_info->status_time % 25 == 0 ) {
+        if ( race_info->status_time % 5 == 0 ) {
             buffer[ 0 ] = 0x03;
 
             memcpy( &buffer[ 1 + 0 ], &vehicles[ 0 ]->info->x, 4 );
@@ -104,7 +107,7 @@ void handle_race_loop( RaceInfo* race_info ) {
             send( conn_socket, ( const char* )buffer, 26, NULL );
         }
 
-        _result = recv( conn_socket, ( char* )buffer, 32, NULL );
+        _result = recv( conn_socket, ( char* )buffer, 128, NULL );
 
         if ( _result == 0 ) {
             MessageBoxA( NULL, "no cusz, rozlaczyl sie", NULL, MB_OK );
@@ -145,11 +148,19 @@ void handle_race_loop( RaceInfo* race_info ) {
                 memcpy( &vehicles[ 1 + i ]->info->rot_x, &buffer[ 2 + ( 24 * i ) + 12 ], 4 );
                 memcpy( &vehicles[ 1 + i ]->info->rot_y, &buffer[ 2 + ( 24 * i ) + 16 ], 4 );
                 memcpy( &vehicles[ 1 + i ]->info->rot_z, &buffer[ 2 + ( 24 * i ) + 20 ], 4 );
+
+                vehicles[ 1 + i ]->info->tyre_rot_x = vehicles[ 1 + i ]->info->rot_z;
+                vehicles[ 1 + i ]->info->tyre_rot_y = vehicles[ 1 + i ]->info->rot_y;
+                vehicles[ 1 + i ]->info->tyre_rot_z = -vehicles[ 1 + i ]->info->rot_x;
             }
         }
     } else {
         // disconnection from track
         synchronized = FALSE;
+
+        dword buffer = 0x00000004;
+
+        send( conn_socket, ( const char* )&buffer, 2, NULL );
     }
 }
 
