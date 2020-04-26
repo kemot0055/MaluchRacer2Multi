@@ -1,7 +1,3 @@
-const PLAYER_INITIALIZED  = 0x00000001;
-const PLAYER_SYNCHRONIZED = 0x00000002;
-const PLAYER_PLAYING      = 0x00000004;
-
 class Player {
 
     constructor( id = -1, socket = null, server = null ) {
