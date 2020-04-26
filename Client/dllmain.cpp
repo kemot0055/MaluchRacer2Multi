@@ -101,7 +101,7 @@ void handle_race_loop( RaceInfo* race_info ) {
             memcpy( &buffer[ 1 + 8 ], &vehicles[ 0 ]->info->z, 4 );
 
             memcpy( &buffer[ 1 + 12 ], &vehicles[ 0 ]->info->rot_x, 4 );
-            memcpy( &buffer[ 1 + 16 ], &vehicles[ 0 ]->info->rot_y, 4 );
+            memcpy( &buffer[ 1 + 16 ], &vehicles[ 0 ]->info->tyre_rot_y, 4 );
             memcpy( &buffer[ 1 + 20 ], &vehicles[ 0 ]->info->rot_z, 4 );
 
             send( conn_socket, ( const char* )buffer, 26, NULL );
@@ -146,11 +146,11 @@ void handle_race_loop( RaceInfo* race_info ) {
                 memcpy( &vehicles[ 1 + i ]->info->z, &buffer[ 2 + ( 24 * i ) + 8 ], 4 );
 
                 memcpy( &vehicles[ 1 + i ]->info->rot_x, &buffer[ 2 + ( 24 * i ) + 12 ], 4 );
-                memcpy( &vehicles[ 1 + i ]->info->rot_y, &buffer[ 2 + ( 24 * i ) + 16 ], 4 );
+                memcpy( &vehicles[ 1 + i ]->info->tyre_rot_y, &buffer[ 2 + ( 24 * i ) + 16 ], 4 );
                 memcpy( &vehicles[ 1 + i ]->info->rot_z, &buffer[ 2 + ( 24 * i ) + 20 ], 4 );
 
                 vehicles[ 1 + i ]->info->tyre_rot_x = vehicles[ 1 + i ]->info->rot_z;
-                vehicles[ 1 + i ]->info->tyre_rot_y = vehicles[ 1 + i ]->info->rot_y;
+                vehicles[ 1 + i ]->info->field2B4 = -vehicles[ 1 + i ]->info->tyre_rot_y;
                 vehicles[ 1 + i ]->info->tyre_rot_z = -vehicles[ 1 + i ]->info->rot_x;
             }
         }
