@@ -68,7 +68,6 @@ void handle_race_synchronization( RaceInfo* race_info ) {
         vehicles[ i ]->info->collidable = FALSE;
     }
 
-    race_info->laps_nb = 2137;
     synchronized = TRUE;
 }
 
@@ -80,6 +79,9 @@ _declspec( naked ) void hook_race_synchronization() {
     _asm mov [esi + 0x28], 0x00000001
     _asm jmp GAME_RACE_START_RETN_POS
 }
+
+float players_vectors[ 3 * 4 ];
+dword players_nb = NULL;
 
 void handle_race_loop( RaceInfo* race_info ) {
     if ( disconnected == TRUE ) {
@@ -93,7 +95,21 @@ void handle_race_loop( RaceInfo* race_info ) {
     } else if ( race_info->status < 6 ) {
         byte buffer[ 128 ];
 
+        for ( int i = 0; i < players_nb; i++ ) {
+            VehicleInfo_* info = vehicles[ 1 + i ]->info;
+
+            info->x += players_vectors[ ( ( 1 + i ) * 3 ) + 0 ];
+            info->y += players_vectors[ ( ( 1 + i ) * 3 ) + 1 ];
+            info->z += players_vectors[ ( ( 1 + i ) * 3 ) + 2 ];
+        }
+
         if ( race_info->status_time % 5 == 0 ) {
+            float velocity_x = 0, velocity_y = 0, velocity_z = 0;
+
+            velocity_x = vehicles[ 0 ]->info->x - players_vectors[ 0 ];
+            velocity_y = vehicles[ 0 ]->info->y - players_vectors[ 1 ];
+            velocity_z = vehicles[ 0 ]->info->z - players_vectors[ 2 ];
+
             buffer[ 0 ] = 0x03;
 
             memcpy( &buffer[ 1 + 0 ], &vehicles[ 0 ]->info->x, 4 );
@@ -104,8 +120,16 @@ void handle_race_loop( RaceInfo* race_info ) {
             memcpy( &buffer[ 1 + 16 ], &vehicles[ 0 ]->info->tyre_rot_y, 4 );
             memcpy( &buffer[ 1 + 20 ], &vehicles[ 0 ]->info->rot_z, 4 );
 
-            send( conn_socket, ( const char* )buffer, 26, NULL );
+            memcpy( &buffer[ 1 + 24 ], &velocity_x, 4 );
+            memcpy( &buffer[ 1 + 28 ], &velocity_y, 4 );
+            memcpy( &buffer[ 1 + 32 ], &velocity_z, 4 );
+
+            send( conn_socket, ( const char* )buffer, 38, NULL );
         }
+
+        players_vectors[ 0 ] = vehicles[ 0 ]->info->x;
+        players_vectors[ 1 ] = vehicles[ 0 ]->info->y;
+        players_vectors[ 2 ] = vehicles[ 0 ]->info->z;
 
         _result = recv( conn_socket, ( char* )buffer, 128, NULL );
 
@@ -130,24 +154,28 @@ void handle_race_loop( RaceInfo* race_info ) {
             WSACleanup();
             return;
         } else if ( _result > 0 && buffer[ 0 ] == 0x37 ) {
-            dword players = buffer[ 1 ];
+            players_nb = buffer[ 1 ];
 
-            for ( int i = 0; i < players; i++ ) {
+            for ( int i = 0; i < players_nb; i++ ) {
                 vehicles[ 1 + i ]->acceleration_strength = 0;
                 vehicles[ 1 + i ]->handling_strength = 0;
                 vehicles[ 1 + i ]->steering_strength = 0;
                 vehicles[ 1 + i ]->info->field200 = 1;
 
-                // [m][p][xxxx][yyyy][zzzz][rxrx][ryry][rzrz]
-                // 2 + 24
+                // [m][p][xxxx][yyyy][zzzz][rxrx][ryry][rzrz][vxvx][vyvy][vzvz]
+                // 2 + 36
 
-                memcpy( &vehicles[ 1 + i ]->info->x, &buffer[ 2 + ( 24 * i ) + 0 ], 4 );
-                memcpy( &vehicles[ 1 + i ]->info->y, &buffer[ 2 + ( 24 * i ) + 4 ], 4 );
-                memcpy( &vehicles[ 1 + i ]->info->z, &buffer[ 2 + ( 24 * i ) + 8 ], 4 );
+                memcpy( &vehicles[ 1 + i ]->info->x, &buffer[ 2 + ( 36 * i ) + 0 ], 4 );
+                memcpy( &vehicles[ 1 + i ]->info->y, &buffer[ 2 + ( 36 * i ) + 4 ], 4 );
+                memcpy( &vehicles[ 1 + i ]->info->z, &buffer[ 2 + ( 36 * i ) + 8 ], 4 );
 
-                memcpy( &vehicles[ 1 + i ]->info->rot_x, &buffer[ 2 + ( 24 * i ) + 12 ], 4 );
-                memcpy( &vehicles[ 1 + i ]->info->tyre_rot_y, &buffer[ 2 + ( 24 * i ) + 16 ], 4 );
-                memcpy( &vehicles[ 1 + i ]->info->rot_z, &buffer[ 2 + ( 24 * i ) + 20 ], 4 );
+                memcpy( &vehicles[ 1 + i ]->info->rot_x, &buffer[ 2 + ( 36 * i ) + 12 ], 4 );
+                memcpy( &vehicles[ 1 + i ]->info->tyre_rot_y, &buffer[ 2 + ( 36 * i ) + 16 ], 4 );
+                memcpy( &vehicles[ 1 + i ]->info->rot_z, &buffer[ 2 + ( 36 * i ) + 20 ], 4 );
+
+                memcpy( &players_vectors[ ( ( 1 + i ) * 3 ) + 0 ], &buffer[ 2 + ( 36 * i ) + 24 ], 4 );
+                memcpy( &players_vectors[ ( ( 1 + i ) * 3 ) + 1 ], &buffer[ 2 + ( 36 * i ) + 28 ], 4 );
+                memcpy( &players_vectors[ ( ( 1 + i ) * 3 ) + 2 ], &buffer[ 2 + ( 36 * i ) + 32 ], 4 );
 
                 vehicles[ 1 + i ]->info->tyre_rot_x = vehicles[ 1 + i ]->info->rot_z;
                 vehicles[ 1 + i ]->info->field2B4 = -vehicles[ 1 + i ]->info->tyre_rot_y;

@@ -67,7 +67,7 @@ class Server {
                     continue;
                 }
 
-                let offset = plr * 24;
+                let offset = plr * 36;
 
                 buffer.writeFloatLE( __player.x, 2 + offset + 0 );
                 buffer.writeFloatLE( __player.y, 2 + offset + 4 );
@@ -76,6 +76,10 @@ class Server {
                 buffer.writeFloatLE( __player.rx, 2 + offset + 12 );
                 buffer.writeFloatLE( __player.ry, 2 + offset + 16 );
                 buffer.writeFloatLE( __player.rz, 2 + offset + 20 );
+
+                buffer.writeFloatLE( __player.vx, 2 + offset + 24 );
+                buffer.writeFloatLE( __player.vy, 2 + offset + 28 );
+                buffer.writeFloatLE( __player.vz, 2 + offset + 32 );
 
                 plr++;
             }

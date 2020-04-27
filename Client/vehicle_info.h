@@ -31,6 +31,13 @@ class VehicleInfo_ {
         float y;
         float z;
 
+        float field2E0;
+
+        float velocity_x;
+        float velocity_y;
+        float velocity_z;
+        
+
 };
 
 class VehicleInfo {

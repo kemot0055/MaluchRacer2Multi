@@ -19,11 +19,16 @@ class Player {
         this.ry           = 0;
         this.rz           = 0;
 
+        this.vx           = 0;
+        this.vy           = 0;
+        this.vz           = 0;
+
         this.process      = this.process.bind( this );
     }
 
     process( data ) {
         const message_id = data.readUInt8();
+        const time_ref   = Date.now();
 
         if ( message_id === 0x02 ) {
             this.synchronized = true, this.server.player_synchronize();
@@ -36,15 +41,19 @@ class Player {
             this.ry = data.readFloatLE( 1 + 16 );
             this.rz = data.readFloatLE( 1 + 20 );
 
+            this.vx = data.readFloatLE( 1 + 24 );
+            this.vy = data.readFloatLE( 1 + 28 );
+            this.vz = data.readFloatLE( 1 + 32 );
+
             this.server.player_update( this );
 
-            console.log( `${ this.name }: x = ${ this.x }, y = ${ this.y }, z = ${ this.z }, delta = ${ Date.now() - this.last_packet }` );
+            console.log( `${ this.name }: vx = ${ this.vx }, vy = ${ this.vy }, vz = ${ this.vz }, delta = ${ time_ref - this.last_packet }ms, packets = ${ this.packets }` );
         } else if ( message_id === 0x04 ) {
             this.synchronized = false;
         }
 
         this.packets++;
-        this.last_packet = Date.now();
+        this.last_packet = time_ref;
     }
 
     initialize( data ) {
